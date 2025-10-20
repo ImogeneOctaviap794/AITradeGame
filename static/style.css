@@ -564,53 +564,79 @@ body {
     border-left: 3px solid var(--primary);
 }
 
-.conversation-details {
+.conversation-section {
     margin-top: 8px;
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius);
+    overflow: hidden;
 }
 
-.conversation-details summary {
+.conversation-section summary {
     cursor: pointer;
-    font-size: 12px;
-    color: var(--text-3);
-    padding: 8px 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-2);
+    padding: 10px 14px;
     user-select: none;
     list-style: none;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    background: var(--bg-2);
+    transition: background 0.2s;
 }
 
-.conversation-details summary::-webkit-details-marker {
+.conversation-section summary:hover {
+    background: var(--bg-3);
+    color: var(--primary);
+}
+
+.conversation-section summary::-webkit-details-marker {
     display: none;
 }
 
-.conversation-details summary::before {
+.conversation-section summary::before {
     content: '▶';
     font-size: 10px;
     transition: transform 0.2s;
     display: inline-block;
 }
 
-.conversation-details[open] summary::before {
+.conversation-section[open] summary::before {
     transform: rotate(90deg);
 }
 
-.conversation-details summary:hover {
-    color: var(--primary);
+.conversation-section summary i {
+    font-size: 14px;
 }
 
-.conversation-json {
-    background: var(--bg-2);
+.conversation-json,
+.conversation-reasoning,
+.conversation-prompt {
+    background: var(--bg-1);
     padding: 12px;
-    border-radius: var(--radius);
+    margin: 0;
     font-size: 12px;
     color: var(--text-2);
     white-space: pre-wrap;
     word-break: break-word;
     font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-    margin-top: 8px;
-    border: 1px solid var(--border-1);
     overflow-x: auto;
+    line-height: 1.5;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.conversation-reasoning {
+    background: #fffbf0;
+    color: var(--text-1);
+    border-top: 1px solid var(--border-1);
+}
+
+.conversation-prompt {
+    background: #f0f9ff;
+    color: var(--text-2);
+    border-top: 1px solid var(--border-1);
 }
 
 /* Modal */

@@ -12,11 +12,16 @@ class AITrader:
                      account_info: Dict) -> Dict:
         prompt = self._build_prompt(market_state, portfolio, account_info)
         
-        response = self._call_llm(prompt)
+        response_data = self._call_llm(prompt)
         
-        decisions = self._parse_response(response)
+        decisions = self._parse_response(response_data['content'])
         
-        return decisions
+        # 返回决策和思考过程
+        return {
+            'decisions': decisions,
+            'reasoning': response_data.get('reasoning', ''),
+            'prompt': prompt  # 也返回完整提示词
+        }
     
     def get_analysis_summary(self, market_state: Dict, decisions: Dict,
                            portfolio: Dict, account_info: Dict) -> str:
@@ -24,7 +29,8 @@ class AITrader:
         prompt = self._build_summary_prompt(market_state, decisions, portfolio, account_info)
         
         try:
-            summary = self._call_llm(prompt)
+            response_data = self._call_llm(prompt)
+            summary = response_data['content']
             return summary.strip()
         except Exception as e:
             print(f"[WARN] Failed to get analysis summary: {e}")
@@ -32,48 +38,75 @@ class AITrader:
     
     def _build_prompt(self, market_state: Dict, portfolio: Dict, 
                      account_info: Dict) -> str:
-        prompt = f"""You are an elite cryptocurrency trader with deep expertise in technical analysis and risk management.
+        
+        # 计算运行统计
+        start_time = account_info.get('start_time', account_info.get('current_time', ''))
+        current_time = account_info.get('current_time', '')
+        invocation_count = account_info.get('invocation_count', 0)
+        minutes_running = account_info.get('minutes_running', 0)
+        
+        prompt = f"""It has been {minutes_running} minutes since you started trading. The current time is {current_time} and you've been invoked {invocation_count} times.
 
-Current Time: {account_info.get('current_time', 'N/A')}
-Total Return: {account_info['total_return']:.2f}%
+ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
+
+Timeframes note: Intraday series are provided at 3-minute intervals.
 
 ═══════════════════════════════════════════════════════════════
 CURRENT MARKET STATE FOR ALL COINS
 ═══════════════════════════════════════════════════════════════
 
 """
-        # 为每个币种提供详细的市场数据
+        # 为每个币种提供详细的市场数据（时间序列格式）
         for coin, data in market_state.items():
             price = data.get('price', 0)
-            change = data.get('change_24h', 0)
             indicators = data.get('indicators', {})
             
-            # 提取关键指标
+            # 当前值
             current_price = indicators.get('current_price', price)
-            ema_20 = indicators.get('ema_20', 0)
-            macd = indicators.get('macd', 0)
-            rsi_7 = indicators.get('rsi_7', 50)
-            rsi_14 = indicators.get('rsi_14', 50)
+            current_ema20 = indicators.get('current_ema20', current_price)
+            current_macd = indicators.get('current_macd', 0)
+            current_rsi_7 = indicators.get('current_rsi_7', 50)
+            
+            # 时间序列
+            mid_prices = indicators.get('mid_prices', [current_price] * 10)
+            ema_20_series = indicators.get('ema_20_series', [current_ema20] * 10)
+            macd_series = indicators.get('macd_series', [0] * 10)
+            rsi_7_series = indicators.get('rsi_7_series', [50] * 10)
+            rsi_14_series = indicators.get('rsi_14_series', [50] * 10)
+            
+            # 格式化数组
+            mid_prices_str = ', '.join([f'{p:.1f}' for p in mid_prices])
+            ema_20_str = ', '.join([f'{p:.3f}' for p in ema_20_series])
+            macd_str = ', '.join([f'{p:.3f}' for p in macd_series])
+            rsi_7_str = ', '.join([f'{p:.3f}' for p in rsi_7_series])
+            rsi_14_str = ', '.join([f'{p:.3f}' for p in rsi_14_series])
+            
+            # 4小时指标
+            macd_4h_series = indicators.get('macd_4h_series', [0] * 10)
+            rsi_14_4h_series = indicators.get('rsi_14_4h_series', [50] * 10)
+            macd_4h_str = ', '.join([f'{p:.3f}' for p in macd_4h_series])
+            rsi_14_4h_str = ', '.join([f'{p:.3f}' for p in rsi_14_4h_series])
             
             prompt += f"""ALL {coin} DATA
-current_price = {current_price:.2f}, current_ema20 = {ema_20:.2f}, current_macd = {macd:.3f}, current_rsi (7 period) = {rsi_7:.3f}
+current_price = {current_price:.2f}, current_ema20 = {current_ema20:.3f}, current_macd = {current_macd:.3f}, current_rsi (7 period) = {current_rsi_7:.3f}
 
-Open Interest: {data.get('open_interest', 0):.2f}
-Funding Rate: {data.get('funding_rate', 0):.6f}
+In addition, here is the latest {coin} open interest and funding rate for perps:
+Open Interest: Latest: {data.get('open_interest', 0):.2f} Average: {data.get('open_interest', 0):.2f}
+Funding Rate: {data.get('funding_rate', 0):.6e}
 
 Intraday series (3-minute intervals, oldest → latest):
-Mid prices: {indicators.get('recent_prices', [current_price]*10)}
-
-EMA indicators (20-period): {ema_20:.2f}
-MACD: {macd:.3f}, Signal: {indicators.get('macd_signal', 0):.3f}, Histogram: {indicators.get('macd_histogram', 0):.3f}
-RSI (7-Period): {rsi_7:.3f}
-RSI (14-Period): {rsi_14:.3f}
+Mid prices: [{mid_prices_str}]
+EMA indicators (20-period): [{ema_20_str}]
+MACD indicators: [{macd_str}]
+RSI indicators (7-Period): [{rsi_7_str}]
+RSI indicators (14-Period): [{rsi_14_str}]
 
 Longer-term context (4-hour timeframe):
-20-Period EMA: {indicators.get('ema_20_4h', ema_20):.2f} vs. 50-Period EMA: {indicators.get('ema_50_4h', indicators.get('ema_50', 0)):.2f}
-ATR: {indicators.get('atr_14', 0):.3f} vs. 4h ATR: {indicators.get('atr_14_4h', 0):.3f}
-Current Volume: {indicators.get('current_volume', 0):.2f} vs. Average Volume: {indicators.get('volume_avg', 0):.2f}
-24h Volume: {data.get('volume_24h', 0):.2f}
+20-Period EMA: {indicators.get('ema_20_4h', current_ema20):.3f} vs. 50-Period EMA: {indicators.get('ema_50_4h', current_ema20):.3f}
+3-Period ATR: {indicators.get('atr_14', 0):.3f} vs. 14-Period ATR: {indicators.get('atr_14_4h', 0):.3f}
+Current Volume: {indicators.get('current_volume', 0):.3f} vs. Average Volume: {indicators.get('volume_avg', 0):.3f}
+MACD indicators: [{macd_4h_str}]
+RSI indicators (14-Period): [{rsi_14_4h_str}]
 
 """
         
@@ -120,28 +153,31 @@ Your task is to analyze the market data and make trading decisions based on:
 
 DECISION RULES:
 
-For EXISTING POSITIONS:
-- If position is profitable and trend is strong → HOLD
-- If position hit stop loss or invalidation → CLOSE_POSITION
-- If trend reversed against position → CLOSE_POSITION
+IMPORTANT: For existing positions, DEFAULT TO HOLD unless there is a clear reason to close.
+
+For EXISTING POSITIONS (HIGH PRIORITY):
+1. First check if invalidation_condition is triggered - if yes, CLOSE
+2. Check if technical reversal is clear (e.g., RSI extreme, MACD crossover against position) - if yes, consider CLOSE
+3. If neither above applies - DEFAULT TO HOLD
+4. Do NOT close positions just because of small movements or temporary noise
+5. The stop_loss and profit_target are automatically monitored, you only need to output hold or close based on invalidation/reversal
+
+For HOLD signal on existing positions:
+- You must output the current quantity from your existing position
+- Keep the existing profit_target, stop_loss, invalidation_condition, leverage, confidence
+- Only provide justification if there's a specific reason worth noting
 
 For NEW POSITIONS:
-- Only enter if clear technical setup
-- RSI < 30 (oversold) for LONG, RSI > 70 (overbought) for SHORT
-- Price above SMA for LONG, below SMA for SHORT
-- Maximum 3 positions simultaneously
-- Risk 2-5% of available cash per trade
+- Be CONSERVATIVE - only enter if there is a very clear setup
+- Avoid entering new positions if you already have 3+ positions
+- RSI < 30 (oversold) for LONG, RSI > 70 (overbought) for SHORT  
+- Strong trend confirmation required
+- Risk 2-3% of available cash per trade maximum
 
-POSITION SIZING:
-- Calculate quantity based on available cash and desired leverage
-- Higher leverage (10-20x) for high confidence setups
-- Lower leverage (3-5x) for uncertain setups
-- Never risk more than available cash allows
-
-EXIT PLANNING:
-- Set profit_target at +10% from entry for moderate setups, +20% for strong setups
-- Set stop_loss at -5% from entry to limit downside
-- Define clear invalidation_condition (price level that negates your thesis)
+AVOID OVER-TRADING:
+- Do not enter and exit positions frequently
+- Let positions develop over time
+- Trust your exit plan (profit_target, stop_loss, invalidation_condition)
 
 ═══════════════════════════════════════════════════════════════
 OUTPUT FORMAT
@@ -278,7 +314,7 @@ BEGIN ANALYSIS
         
         return prompt
     
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str) -> Dict:
         try:
             base_url = self.api_url.rstrip('/')
             if not base_url.endswith('/v1'):
@@ -309,7 +345,18 @@ BEGIN ANALYSIS
                 max_tokens=2000
             )
             
-            return response.choices[0].message.content
+            message = response.choices[0].message
+            content = message.content
+            
+            # 检测DeepSeek的reasoning字段
+            reasoning = ""
+            if hasattr(message, 'reasoning_content') and message.reasoning_content:
+                reasoning = message.reasoning_content
+            
+            return {
+                'content': content,
+                'reasoning': reasoning
+            }
             
         except APIConnectionError as e:
             error_msg = f"API connection failed: {str(e)}"

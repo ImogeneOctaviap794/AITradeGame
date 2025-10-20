@@ -306,19 +306,50 @@ class TradingApp {
 
         container.innerHTML = conversations.map(conv => {
             const timestamp = new Date(conv.timestamp.replace(' ', 'T') + 'Z').toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-            const summary = conv.cot_trace || '暂无分析总结';
+            const summary = conv.summary || '暂无分析总结';
+            const reasoning = conv.cot_trace || '';
             const decisions = conv.ai_response;
+            const userPrompt = conv.user_prompt || '';
             
-            return `
+            // 构建三部分内容
+            let content = `
                 <div class="conversation-item">
                     <div class="conversation-time">${timestamp}</div>
+                    
+                    <!-- 中文总结 -->
                     <div class="conversation-summary">${summary}</div>
-                    <details class="conversation-details">
-                        <summary>查看决策详情</summary>
+            `;
+            
+            // 如果有思考过程（DeepSeek reasoning）
+            if (reasoning) {
+                content += `
+                    <details class="conversation-section">
+                        <summary><i class="bi bi-lightbulb"></i> AI思考过程 (Reasoning)</summary>
+                        <pre class="conversation-reasoning">${reasoning}</pre>
+                    </details>
+                `;
+            }
+            
+            // 交易决策
+            content += `
+                    <details class="conversation-section">
+                        <summary><i class="bi bi-clipboard-data"></i> 交易决策 (Decisions)</summary>
                         <pre class="conversation-json">${decisions}</pre>
                     </details>
-                </div>
             `;
+            
+            // 用户提示词
+            if (userPrompt) {
+                content += `
+                    <details class="conversation-section">
+                        <summary><i class="bi bi-file-text"></i> 用户提示词 (Prompt)</summary>
+                        <pre class="conversation-prompt">${userPrompt}</pre>
+                    </details>
+                `;
+            }
+            
+            content += `</div>`;
+            return content;
         }).join('');
     }
 

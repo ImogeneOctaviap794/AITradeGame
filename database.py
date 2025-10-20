@@ -78,6 +78,7 @@ class Database:
                 user_prompt TEXT NOT NULL,
                 ai_response TEXT NOT NULL,
                 cot_trace TEXT,
+                summary TEXT DEFAULT '',
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (model_id) REFERENCES models(id)
             )
@@ -311,14 +312,14 @@ class Database:
     # ============ Conversation History ============
     
     def add_conversation(self, model_id: int, user_prompt: str, 
-                        ai_response: str, cot_trace: str = ''):
+                        ai_response: str, cot_trace: str = '', summary: str = ''):
         """Add conversation record"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO conversations (model_id, user_prompt, ai_response, cot_trace)
-            VALUES (?, ?, ?, ?)
-        ''', (model_id, user_prompt, ai_response, cot_trace))
+            INSERT INTO conversations (model_id, user_prompt, ai_response, cot_trace, summary)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (model_id, user_prompt, ai_response, cot_trace, summary))
         conn.commit()
         conn.close()
     
@@ -359,4 +360,36 @@ class Database:
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
+    
+    def get_trading_statistics(self, model_id: int) -> Dict:
+        """Get trading statistics (start time, invocation count, running time)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Get first conversation timestamp as start time
+        cursor.execute('''
+            SELECT MIN(timestamp) as start_time, COUNT(*) as count 
+            FROM conversations WHERE model_id = ?
+        ''', (model_id,))
+        result = cursor.fetchone()
+        
+        conn.close()
+        
+        start_time = result['start_time'] if result['start_time'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+        count = result['count'] if result['count'] else 0
+        
+        # Calculate minutes running
+        try:
+            from datetime import datetime as dt
+            start_dt = dt.strptime(start_time.split('.')[0], '%Y-%m-%d %H:%M:%S')
+            now_dt = dt.now()
+            minutes_running = int((now_dt - start_dt).total_seconds() / 60)
+        except:
+            minutes_running = 0
+        
+        return {
+            'start_time': start_time,
+            'invocation_count': count,
+            'minutes_running': minutes_running
+        }
 

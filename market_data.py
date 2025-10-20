@@ -366,34 +366,37 @@ class MarketDataFetcher:
                 'volume_avg_4h': df_4h['volume'].tail(20).mean()
             }
         
+        # 获取最近10个值的时间序列
+        series_length = 10
+        
         return {
-            # Current price
+            # Current values (latest)
             'current_price': latest['close'],
+            'current_ema20': latest.get('ema_20', latest['close']),
+            'current_macd': latest.get('macd', 0),
+            'current_rsi_7': latest.get('rsi_7', 50),
+            'current_rsi_14': latest.get('rsi_14', 50),
             
-            # EMAs
+            # Time series (最近10个值，oldest → newest)
+            'mid_prices': df['close'].tail(series_length).tolist(),
+            'ema_20_series': df['ema_20'].tail(series_length).bfill().tolist() if 'ema_20' in df else [latest['close']] * series_length,
+            'macd_series': df['macd'].tail(series_length).fillna(0).tolist() if 'macd' in df else [0] * series_length,
+            'rsi_7_series': df['rsi_7'].tail(series_length).fillna(50).tolist() if 'rsi_7' in df else [50] * series_length,
+            'rsi_14_series': df['rsi_14'].tail(series_length).fillna(50).tolist() if 'rsi_14' in df else [50] * series_length,
+            
+            # Single values (for backward compatibility)
             'ema_12': latest.get('ema_12', latest['close']),
             'ema_20': latest.get('ema_20', latest['close']),
             'ema_26': latest.get('ema_26', latest['close']),
             'ema_50': latest.get('ema_50', latest['close']),
-            
-            # SMAs
             'sma_7': latest.get('sma_7', latest['close']),
             'sma_14': latest.get('sma_14', latest['close']),
-            
-            # MACD
             'macd': latest.get('macd', 0),
             'macd_signal': latest.get('macd_signal', 0),
             'macd_histogram': latest.get('macd_histogram', 0),
-            
-            # RSI
             'rsi_7': latest.get('rsi_7', 50),
             'rsi_14': latest.get('rsi_14', 50),
-            
-            # ATR
             'atr_14': latest.get('atr_14', 0),
-            
-            # Time series
-            'recent_prices': recent_prices,
             
             # Volume
             'volume_avg': volume_avg,
@@ -402,8 +405,10 @@ class MarketDataFetcher:
             # Price change
             'price_change_pct': price_change_pct,
             
-            # 4-hour context
-            **context_4h
+            # 4-hour context with series
+            **context_4h,
+            'macd_4h_series': df_4h['macd'].tail(series_length).fillna(0).tolist() if len(df_4h) >= series_length and 'macd' in df_4h else [0] * series_length,
+            'rsi_14_4h_series': df_4h['rsi_14'].tail(series_length).fillna(50).tolist() if len(df_4h) >= series_length and 'rsi_14' in df_4h else [50] * series_length,
         }
     
     def get_complete_market_data(self, coins: List[str]) -> Dict:

@@ -23,9 +23,14 @@ class TradingEngine:
             
             account_info = self._build_account_info(portfolio)
             
-            decisions = self.ai_trader.make_decision(
+            decision_result = self.ai_trader.make_decision(
                 market_state, portfolio, account_info
             )
+            
+            # 提取决策、思考过程和提示词
+            decisions = decision_result['decisions']
+            reasoning = decision_result.get('reasoning', '')
+            user_prompt = decision_result.get('prompt', '')
             
             execution_results = self._execute_decisions(decisions, market_state, portfolio)
             
@@ -40,9 +45,10 @@ class TradingEngine:
             
             self.db.add_conversation(
                 self.model_id,
-                user_prompt=self._format_prompt(market_state, portfolio, account_info),
+                user_prompt=user_prompt,
                 ai_response=json.dumps(decisions, ensure_ascii=False),
-                cot_trace=analysis_summary
+                cot_trace=reasoning,  # 存储AI思考过程
+                summary=analysis_summary  # 存储中文总结
             )
             
             updated_portfolio = self.db.get_portfolio(self.model_id, current_prices)
@@ -161,10 +167,16 @@ class TradingEngine:
         total_value = portfolio['total_value']
         total_return = ((total_value - initial_capital) / initial_capital) * 100
         
+        # 获取运行统计
+        stats = self.db.get_trading_statistics(self.model_id)
+        
         return {
-            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'),
             'total_return': total_return,
-            'initial_capital': initial_capital
+            'initial_capital': initial_capital,
+            'start_time': stats['start_time'],
+            'minutes_running': stats['minutes_running'],
+            'invocation_count': stats['invocation_count']
         }
     
     def _format_prompt(self, market_state: Dict, portfolio: Dict, 
