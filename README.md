@@ -5,7 +5,14 @@
 
 基于 Web 的加密货币交易模拟平台，采用 AI 驱动的决策系统。
 
-在线版（维护中）：https://aitradegame.com/ 
+在线版（维护中）：https://aitradegame.com/
+
+## 本Fork的改动
+
+- 数据源切换为Binance API，增加技术指标种类
+- 添加止损止盈自动执行功能
+- 改进中文市场分析展示
+- 修复部分bug 
 
 ## 功能特性
 
