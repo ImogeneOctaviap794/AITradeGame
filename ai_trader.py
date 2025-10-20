@@ -45,14 +45,16 @@ class AITrader:
         invocation_count = account_info.get('invocation_count', 0)
         minutes_running = account_info.get('minutes_running', 0)
         
-        prompt = f"""It has been {minutes_running} minutes since you started trading. The current time is {current_time} and you've been invoked {invocation_count} times.
+        prompt = f"""You are a professional cryptocurrency trader with real capital at risk. It has been {minutes_running} minutes since you started trading. The current time is {current_time} and you've been invoked {invocation_count} times.
 
-ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
+Your goal: MAXIMIZE RETURNS while managing risk intelligently. Look for alpha opportunities across all coins.
 
-Timeframes note: Intraday series are provided at 3-minute intervals.
+ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST (最旧 → 最新)
+
+Timeframes note: Intraday series are provided at 3-minute intervals (3分钟K线数据)
 
 ═══════════════════════════════════════════════════════════════
-CURRENT MARKET STATE FOR ALL COINS
+CURRENT MARKET STATE FOR ALL COINS (当前市场状态)
 ═══════════════════════════════════════════════════════════════
 
 """
@@ -112,18 +114,18 @@ RSI indicators (14-Period): [{rsi_14_4h_str}]
         
         # 账户信息
         prompt += f"""═══════════════════════════════════════════════════════════════
-YOUR ACCOUNT INFORMATION & PERFORMANCE
+YOUR ACCOUNT INFORMATION & PERFORMANCE (账户信息与表现)
 ═══════════════════════════════════════════════════════════════
 
-Initial Capital: ${account_info['initial_capital']:.2f}
-Current Account Value: ${portfolio['total_value']:.2f}
-Available Cash: ${portfolio['cash']:.2f}
-Realized P&L: ${portfolio.get('realized_pnl', 0):.2f}
-Unrealized P&L: ${portfolio.get('unrealized_pnl', 0):.2f}
-Total Return: {account_info['total_return']:.2f}%
-Margin Used: ${portfolio.get('margin_used', 0):.2f}
+Initial Capital: ${account_info['initial_capital']:.2f} (初始资金)
+Current Account Value: ${portfolio['total_value']:.2f} (当前账户总值)
+Available Cash: ${portfolio['cash']:.2f} (可用现金)
+Realized P&L: ${portfolio.get('realized_pnl', 0):.2f} (已实现盈亏)
+Unrealized P&L: ${portfolio.get('unrealized_pnl', 0):.2f} (未实现盈亏)
+Total Return: {account_info['total_return']:.2f}% (总收益率) {'📈 PROFIT!' if account_info['total_return'] > 0 else '📉 LOSS'}
+Margin Used: ${portfolio.get('margin_used', 0):.2f} (已用保证金)
 
-CURRENT LIVE POSITIONS:
+CURRENT LIVE POSITIONS (当前持仓):
 """
         if portfolio['positions']:
             for pos in portfolio['positions']:
@@ -153,31 +155,32 @@ Your task is to analyze the market data and make trading decisions based on:
 
 DECISION RULES:
 
-IMPORTANT: For existing positions, DEFAULT TO HOLD unless there is a clear reason to close.
+For EXISTING POSITIONS:
+1. CHECK invalidation conditions first - if triggered, CLOSE immediately
+2. EVALUATE technical signals - if showing clear reversal (MACD crossover against position, RSI extreme divergence), consider CLOSE
+3. If position still looks good and invalidation not triggered - HOLD
+4. Stop_loss and profit_target are automatically monitored by the system
+5. For HOLD signals: output current quantity, keep existing exit_plan parameters
 
-For EXISTING POSITIONS (HIGH PRIORITY):
-1. First check if invalidation_condition is triggered - if yes, CLOSE
-2. Check if technical reversal is clear (e.g., RSI extreme, MACD crossover against position) - if yes, consider CLOSE
-3. If neither above applies - DEFAULT TO HOLD
-4. Do NOT close positions just because of small movements or temporary noise
-5. The stop_loss and profit_target are automatically monitored, you only need to output hold or close based on invalidation/reversal
+For NEW POSITIONS - ACTIVE TRADING STRATEGY:
+- SEEK opportunities across all coins - look for setups even if you have existing positions
+- Enter LONG when: RSI < 40 (oversold bounce), MACD turning positive, price above EMA20, uptrend confirmed
+- Enter SHORT when: RSI > 60 (overbought), MACD turning negative, price below EMA20, downtrend confirmed
+- Use 10-15x leverage for strong setups (confidence > 0.7), 5-10x for moderate setups
+- Position sizing: Risk 3-5% of available cash per trade (higher for high-confidence setups)
+- Aim for 2:1 or better risk/reward ratio (profit_target should be 2x the distance from stop_loss)
 
-For HOLD signal on existing positions:
-- You must output the current quantity from your existing position
-- Keep the existing profit_target, stop_loss, invalidation_condition, leverage, confidence
-- Only provide justification if there's a specific reason worth noting
+PORTFOLIO MANAGEMENT:
+- Maintain 4-6 positions across different coins for diversification
+- Keep at least 30% cash available for new opportunities
+- Don't be afraid to take profits when targets are near
+- Cut losses quickly if invalidation conditions are met
 
-For NEW POSITIONS:
-- Be CONSERVATIVE - only enter if there is a very clear setup
-- Avoid entering new positions if you already have 3+ positions
-- RSI < 30 (oversold) for LONG, RSI > 70 (overbought) for SHORT  
-- Strong trend confirmation required
-- Risk 2-3% of available cash per trade maximum
-
-AVOID OVER-TRADING:
-- Do not enter and exit positions frequently
-- Let positions develop over time
-- Trust your exit plan (profit_target, stop_loss, invalidation_condition)
+MARKET CONTEXT AWARENESS:
+- 4-hour EMA20 > EMA50 = bullish bias (favor LONG positions)
+- 4-hour EMA20 < EMA50 = bearish bias (favor SHORT positions or stay flat)
+- MACD 4h trending up = momentum bullish
+- High funding rates (> 0.01%) = overcrowded trade, be cautious
 
 ═══════════════════════════════════════════════════════════════
 OUTPUT FORMAT
