@@ -45,17 +45,17 @@ class AITrader:
         invocation_count = account_info.get('invocation_count', 0)
         minutes_running = account_info.get('minutes_running', 0)
         
-        prompt = f"""You are a professional cryptocurrency trader with real capital at risk. It has been {minutes_running} minutes since you started trading. The current time is {current_time} and you've been invoked {invocation_count} times.
+        prompt = f"""It has been {minutes_running} minutes since you started trading. The current time is {current_time} and you've been invoked {invocation_count} times. Below, we are providing you with a variety of state data, price data, and predictive signals so you can discover alpha. Below that is your current account information, value, performance, positions, etc.
+你开始交易已经 {minutes_running} 分钟了。当前时间是 {current_time}，你已经被调用了 {invocation_count} 次。下面，我们将为你提供各种状态数据、价格数据和预测信号，以便你发现阿尔法。下面是您当前的账户信息、价值、表现、仓位等。
 
-Your goal: MAXIMIZE RETURNS while managing risk intelligently. Look for alpha opportunities across all coins.
+ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
+以下所有价格或信号数据均按以下顺序排列：最旧 → 最新
 
-ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST (最旧 → 最新)
+Timeframes note: Unless stated otherwise in a section title, intraday series are provided at 3‑minute intervals. If a coin uses a different interval, it is explicitly stated in that coin's section.
+时间范围说明：除非在章节标题中另有说明，否则盘中序列以 3 分钟的间隔提供。如果某个币种使用不同的间隔，则会在该币种的章节中明确说明。
 
-Timeframes note: Intraday series are provided at 3-minute intervals (3分钟K线数据)
-
-═══════════════════════════════════════════════════════════════
-CURRENT MARKET STATE FOR ALL COINS (当前市场状态)
-═══════════════════════════════════════════════════════════════
+CURRENT MARKET STATE FOR ALL COINS
+所有币种的当前市场状态
 
 """
         # 为每个币种提供详细的市场数据（时间序列格式）
@@ -89,59 +89,99 @@ CURRENT MARKET STATE FOR ALL COINS (当前市场状态)
             macd_4h_str = ', '.join([f'{p:.3f}' for p in macd_4h_series])
             rsi_14_4h_str = ', '.join([f'{p:.3f}' for p in rsi_14_4h_series])
             
-            prompt += f"""ALL {coin} DATA
+            prompt += f"""ALL {coin} DATA  所有 {coin} 数据
 current_price = {current_price:.2f}, current_ema20 = {current_ema20:.3f}, current_macd = {current_macd:.3f}, current_rsi (7 period) = {current_rsi_7:.3f}
+当前价格 = {current_price:.2f}, 当前 ema20 = {current_ema20:.3f}, 当前 macd = {current_macd:.3f}, 当前 rsi (7 period) = {current_rsi_7:.3f}
 
-In addition, here is the latest {coin} open interest and funding rate for perps:
+In addition, here is the latest {coin} open interest and funding rate for perps (the instrument you are trading):
+此外，以下是您交易的永续合约最新的 {coin} 未平仓合约和资金费率：
+
 Open Interest: Latest: {data.get('open_interest', 0):.2f} Average: {data.get('open_interest', 0):.2f}
-Funding Rate: {data.get('funding_rate', 0):.6e}
+未平仓合约：最新：{data.get('open_interest', 0):.2f} 平均：{data.get('open_interest', 0):.2f}
+
+Funding Rate: {data.get('funding_rate', 0):.6e}  资金费率：{data.get('funding_rate', 0):.6e}
 
 Intraday series (3-minute intervals, oldest → latest):
+日内序列（3 分钟间隔，从旧到新）：
 Mid prices: [{mid_prices_str}]
-EMA indicators (20-period): [{ema_20_str}]
-MACD indicators: [{macd_str}]
-RSI indicators (7-Period): [{rsi_7_str}]
-RSI indicators (14-Period): [{rsi_14_str}]
+中间价：[{mid_prices_str}]
 
-Longer-term context (4-hour timeframe):
-20-Period EMA: {indicators.get('ema_20_4h', current_ema20):.3f} vs. 50-Period EMA: {indicators.get('ema_50_4h', current_ema20):.3f}
-3-Period ATR: {indicators.get('atr_14', 0):.3f} vs. 14-Period ATR: {indicators.get('atr_14_4h', 0):.3f}
+EMA indicators (20‑period): [{ema_20_str}]
+EMA 指标（20 周期）：[{ema_20_str}]
+
+MACD indicators: [{macd_str}]
+MACD 指标：[{macd_str}]
+
+RSI indicators (7‑Period): [{rsi_7_str}]
+RSI 指标（7 周期）：[{rsi_7_str}]
+
+RSI indicators (14‑Period): [{rsi_14_str}]
+RSI 指标（14 周期）：[{rsi_14_str}]
+
+Longer‑term context (4‑hour timeframe):
+长期背景（4 小时时间范围）：
+
+20‑Period EMA: {indicators.get('ema_20_4h', current_ema20):.3f} vs. 50‑Period EMA: {indicators.get('ema_50_4h', current_ema20):.3f}
+20 周期 EMA：{indicators.get('ema_20_4h', current_ema20):.3f} vs. 50 周期 EMA：{indicators.get('ema_50_4h', current_ema20):.3f}
+
+3‑Period ATR: {indicators.get('atr_14', 0):.3f} vs. 14‑Period ATR: {indicators.get('atr_14_4h', 0):.3f}
+3 周期 ATR：{indicators.get('atr_14', 0):.3f} vs. 14 周期 ATR：{indicators.get('atr_14_4h', 0):.3f}
+
 Current Volume: {indicators.get('current_volume', 0):.3f} vs. Average Volume: {indicators.get('volume_avg', 0):.3f}
+当前成交量：{indicators.get('current_volume', 0):.3f} vs. 平均成交量：{indicators.get('volume_avg', 0):.3f}
+
 MACD indicators: [{macd_4h_str}]
-RSI indicators (14-Period): [{rsi_14_4h_str}]
+MACD 指标：[{macd_4h_str}]
+
+RSI indicators (14‑Period): [{rsi_14_4h_str}]
+RSI 指标（14 周期）：[{rsi_14_4h_str}]
 
 """
         
         # 账户信息
-        prompt += f"""═══════════════════════════════════════════════════════════════
-YOUR ACCOUNT INFORMATION & PERFORMANCE (账户信息与表现)
-═══════════════════════════════════════════════════════════════
+        prompt += f"""
+HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE
+以下是您的账户信息和表现
+Current Total Return (percent): {account_info['total_return']:.2f}%
+当前总回报（百分比）：{account_info['total_return']:.2f}%
 
-Initial Capital: ${account_info['initial_capital']:.2f} (初始资金)
-Current Account Value: ${portfolio['total_value']:.2f} (当前账户总值)
-Available Cash: ${portfolio['cash']:.2f} (可用现金)
-Realized P&L: ${portfolio.get('realized_pnl', 0):.2f} (已实现盈亏)
-Unrealized P&L: ${portfolio.get('unrealized_pnl', 0):.2f} (未实现盈亏)
-Total Return: {account_info['total_return']:.2f}% (总收益率) {'📈 PROFIT!' if account_info['total_return'] > 0 else '📉 LOSS'}
-Margin Used: ${portfolio.get('margin_used', 0):.2f} (已用保证金)
+Available Cash: {portfolio['cash']:.2f}  可用现金：{portfolio['cash']:.2f}
 
-CURRENT LIVE POSITIONS (当前持仓):
-"""
+Current Account Value: {portfolio['total_value']:.2f}
+当前账户价值：{portfolio['total_value']:.2f}
+
+Current live positions & performance: """
+        
         if portfolio['positions']:
+            positions_list = []
             for pos in portfolio['positions']:
                 pnl = pos.get('pnl', 0)
-                pnl_pct = (pnl / (pos['quantity'] * pos['avg_price'])) * 100 if pos['quantity'] > 0 else 0
-                prompt += f"""
-{pos['coin']} {pos['side'].upper()}:
-  - Quantity: {pos['quantity']:.4f}
-  - Entry Price: ${pos['avg_price']:.2f}
-  - Current Price: ${pos.get('current_price', 0):.2f}
-  - Leverage: {pos['leverage']}x
-  - Notional Value: ${pos['quantity'] * pos['avg_price']:.2f}
-  - Unrealized P&L: ${pnl:.2f} ({pnl_pct:+.2f}%)
-"""
+                current_price = pos.get('current_price', pos['avg_price'])
+                # 计算清算价格（简化版）
+                if pos['side'] == 'long':
+                    liquidation_price = pos['avg_price'] * (1 - 1/pos['leverage'] * 0.9)
+                else:
+                    liquidation_price = pos['avg_price'] * (1 + 1/pos['leverage'] * 0.9)
+                
+                notional_usd = pos['quantity'] * pos['avg_price']
+                risk_usd = abs(pos['avg_price'] - pos.get('stop_loss', pos['avg_price'])) * pos['quantity']
+                
+                positions_list.append(
+                    f"{{'symbol': '{pos['coin']}', 'quantity': {pos['quantity']:.2f}, 'entry_price': {pos['avg_price']:.2f}, "
+                    f"'current_price': {current_price:.2f}, 'liquidation_price': {liquidation_price:.2f}, "
+                    f"'unrealized_pnl': {pnl:.2f}, 'leverage': {pos['leverage']}, "
+                    f"'exit_plan': {{'profit_target': {pos.get('profit_target', 0):.2f}, 'stop_loss': {pos.get('stop_loss', 0):.2f}, "
+                    f"'invalidation_condition': '{pos.get('invalidation_condition', '')}'}}, "
+                    f"'confidence': 0.75, 'risk_usd': {risk_usd:.2f}, 'notional_usd': {notional_usd:.2f}}}"
+                )
+            
+            prompt += " ".join(positions_list)
         else:
-            prompt += "No positions currently open.\n"
+            prompt += "No positions currently open"
+        
+        prompt += f"""  
+
+Sharpe Ratio: 0.00  夏普比率：0.00"""
         
         prompt += f"""
 ═══════════════════════════════════════════════════════════════
