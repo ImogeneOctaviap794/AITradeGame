@@ -110,14 +110,16 @@
                                         <th>币种</th>
                                         <th>方向</th>
                                         <th>数量</th>
+                                        <th>持仓市值</th>
                                         <th>开仓价</th>
                                         <th>当前价</th>
+                                        <th>止盈/止损</th>
                                         <th>杠杆</th>
                                         <th>盈亏</th>
                                     </tr>
                                 </thead>
                                 <tbody id="positionsBody">
-                                    <tr><td colspan="7" class="empty-state">暂无持仓</td></tr>
+                                    <tr><td colspan="9" class="empty-state">暂无持仓</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -187,6 +189,41 @@
             <div class="modal-footer">
                 <button class="btn-secondary" id="cancelBtn">取消</button>
                 <button class="btn-primary" id="submitBtn">确认添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Model Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>模型设置</h3>
+                <button class="btn-close" id="closeSettingsBtn">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4>修改初始资金</h4>
+                    <p class="settings-desc">修改账户的初始资金金额（不影响当前持仓和交易记录）</p>
+                    <div class="form-group">
+                        <label>初始资金 (USD)</label>
+                        <input type="number" id="newCapital" placeholder="100000" class="form-input">
+                    </div>
+                    <button class="btn-primary" id="updateCapitalBtn">
+                        <i class="bi bi-cash-stack"></i>
+                        更新资金
+                    </button>
+                </div>
+                
+                <div class="settings-section settings-danger">
+                    <h4>重置模拟盘</h4>
+                    <p class="settings-desc">清空所有持仓、交易记录、对话记录和账户历史，重新开始交易</p>
+                    <button class="btn-danger" id="resetModelBtn">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                        重置模拟盘
+                    </button>
+                </div>
             </div>
         </div>
     </div>

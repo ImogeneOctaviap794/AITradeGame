@@ -44,6 +44,9 @@ class Database:
                 avg_price REAL NOT NULL,
                 leverage INTEGER DEFAULT 1,
                 side TEXT DEFAULT 'long',
+                profit_target REAL DEFAULT 0,
+                stop_loss REAL DEFAULT 0,
+                invalidation_condition TEXT DEFAULT '',
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (model_id) REFERENCES models(id),
                 UNIQUE(model_id, coin, side)
@@ -142,22 +145,50 @@ class Database:
         conn.commit()
         conn.close()
     
-    # ============ Portfolio Management ============
+    def reset_model(self, model_id: int):
+        """Reset model trading data (keep model config)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM portfolios WHERE model_id = ?', (model_id,))
+        cursor.execute('DELETE FROM trades WHERE model_id = ?', (model_id,))
+        cursor.execute('DELETE FROM conversations WHERE model_id = ?', (model_id,))
+        cursor.execute('DELETE FROM account_values WHERE model_id = ?', (model_id,))
+        conn.commit()
+        conn.close()
     
-    def update_position(self, model_id: int, coin: str, quantity: float, 
-                       avg_price: float, leverage: int = 1, side: str = 'long'):
-        """Update position"""
+    def update_initial_capital(self, model_id: int, initial_capital: float):
+        """Update model initial capital"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO portfolios (model_id, coin, quantity, avg_price, leverage, side, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            UPDATE models SET initial_capital = ? WHERE id = ?
+        ''', (initial_capital, model_id))
+        conn.commit()
+        conn.close()
+    
+    # ============ Portfolio Management ============
+    
+    def update_position(self, model_id: int, coin: str, quantity: float, 
+                       avg_price: float, leverage: int = 1, side: str = 'long',
+                       profit_target: float = 0, stop_loss: float = 0, 
+                       invalidation_condition: str = ''):
+        """Update position with exit plan"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO portfolios (model_id, coin, quantity, avg_price, leverage, side, 
+                                  profit_target, stop_loss, invalidation_condition, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(model_id, coin, side) DO UPDATE SET
                 quantity = excluded.quantity,
                 avg_price = excluded.avg_price,
                 leverage = excluded.leverage,
+                profit_target = excluded.profit_target,
+                stop_loss = excluded.stop_loss,
+                invalidation_condition = excluded.invalidation_condition,
                 updated_at = CURRENT_TIMESTAMP
-        ''', (model_id, coin, quantity, avg_price, leverage, side))
+        ''', (model_id, coin, quantity, avg_price, leverage, side, 
+              profit_target, stop_loss, invalidation_condition))
         conn.commit()
         conn.close()
     

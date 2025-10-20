@@ -23,6 +23,10 @@ class TradingApp {
         document.getElementById('cancelBtn').addEventListener('click', () => this.hideModal());
         document.getElementById('submitBtn').addEventListener('click', () => this.submitModel());
         document.getElementById('refreshBtn').addEventListener('click', () => this.refresh());
+        
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => this.hideSettingsModal());
+        document.getElementById('updateCapitalBtn').addEventListener('click', () => this.updateCapital());
+        document.getElementById('resetModelBtn').addEventListener('click', () => this.resetModel());
 
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
@@ -33,6 +37,7 @@ class TradingApp {
         try {
             const response = await fetch('/api/models');
             const models = await response.json();
+            this.models = models;  // Store models for later use
             this.renderModels(models);
 
             if (models.length > 0 && !this.currentModelId) {
@@ -57,9 +62,14 @@ class TradingApp {
                 <div class="model-name">${model.name}</div>
                 <div class="model-info">
                     <span>${model.model_name}</span>
-                    <span class="model-delete" onclick="event.stopPropagation(); app.deleteModel(${model.id})">
-                        <i class="bi bi-trash"></i>
-                    </span>
+                    <div class="model-actions">
+                        <span class="model-action" onclick="event.stopPropagation(); app.showSettingsModal(${model.id})" title="设置">
+                            <i class="bi bi-gear"></i>
+                        </span>
+                        <span class="model-action model-delete" onclick="event.stopPropagation(); app.deleteModel(${model.id})" title="删除">
+                            <i class="bi bi-trash"></i>
+                        </span>
+                    </div>
                 </div>
             </div>
         `).join('');
@@ -210,7 +220,7 @@ class TradingApp {
         const tbody = document.getElementById('positionsBody');
         
         if (positions.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无持仓</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="empty-state">暂无持仓</td></tr>';
             return;
         }
 
@@ -218,9 +228,20 @@ class TradingApp {
             const sideClass = pos.side === 'long' ? 'badge-long' : 'badge-short';
             const sideText = pos.side === 'long' ? '做多' : '做空';
             
+            // 计算持仓市值（不带杠杆）
+            const positionValue = pos.quantity * pos.avg_price;
+            
             const currentPrice = pos.current_price !== null && pos.current_price !== undefined 
                 ? `$${pos.current_price.toFixed(2)}` 
                 : '-';
+            
+            // 止盈止损显示
+            const profitTarget = pos.profit_target > 0 ? `$${pos.profit_target.toFixed(2)}` : '-';
+            const stopLoss = pos.stop_loss > 0 ? `$${pos.stop_loss.toFixed(2)}` : '-';
+            const exitPlan = `<div class="exit-plan">
+                <div class="exit-item"><span class="exit-label">TP:</span> <span class="text-success">${profitTarget}</span></div>
+                <div class="exit-item"><span class="exit-label">SL:</span> <span class="text-danger">${stopLoss}</span></div>
+            </div>`;
             
             let pnlDisplay = '-';
             let pnlClass = '';
@@ -234,8 +255,10 @@ class TradingApp {
                     <td><strong>${pos.coin}</strong></td>
                     <td><span class="badge ${sideClass}">${sideText}</span></td>
                     <td>${pos.quantity.toFixed(4)}</td>
+                    <td><strong>$${positionValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
                     <td>$${pos.avg_price.toFixed(2)}</td>
                     <td>${currentPrice}</td>
+                    <td>${exitPlan}</td>
                     <td>${pos.leverage}x</td>
                     <td class="${pnlClass}"><strong>${pnlDisplay}</strong></td>
                 </tr>
@@ -281,12 +304,22 @@ class TradingApp {
             return;
         }
 
-        container.innerHTML = conversations.map(conv => `
-            <div class="conversation-item">
-                <div class="conversation-time">${new Date(conv.timestamp.replace(' ', 'T') + 'Z').toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</div>
-                <div class="conversation-content">${conv.ai_response}</div>
-            </div>
-        `).join('');
+        container.innerHTML = conversations.map(conv => {
+            const timestamp = new Date(conv.timestamp.replace(' ', 'T') + 'Z').toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+            const summary = conv.cot_trace || '暂无分析总结';
+            const decisions = conv.ai_response;
+            
+            return `
+                <div class="conversation-item">
+                    <div class="conversation-time">${timestamp}</div>
+                    <div class="conversation-summary">${summary}</div>
+                    <details class="conversation-details">
+                        <summary>查看决策详情</summary>
+                        <pre class="conversation-json">${decisions}</pre>
+                    </details>
+                </div>
+            `;
+        }).join('');
     }
 
     async loadMarketPrices() {
@@ -383,6 +416,80 @@ class TradingApp {
         } catch (error) {
             console.error('Failed to delete model:', error);
         }
+    }
+
+    showSettingsModal(modelId) {
+        this.settingsModelId = modelId;
+        const model = this.getModelById(modelId);
+        if (model) {
+            document.getElementById('newCapital').value = model.initial_capital;
+        }
+        document.getElementById('settingsModal').classList.add('show');
+    }
+
+    hideSettingsModal() {
+        document.getElementById('settingsModal').classList.remove('show');
+        this.settingsModelId = null;
+    }
+
+    async updateCapital() {
+        if (!this.settingsModelId) return;
+
+        const newCapital = parseFloat(document.getElementById('newCapital').value);
+        if (!newCapital || newCapital <= 0) {
+            alert('请输入有效的资金金额');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/models/${this.settingsModelId}/capital`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ initial_capital: newCapital })
+            });
+
+            if (response.ok) {
+                alert('资金更新成功！');
+                this.hideSettingsModal();
+                await this.refresh();
+            } else {
+                const error = await response.json();
+                alert(`更新失败: ${error.error || '未知错误'}`);
+            }
+        } catch (error) {
+            console.error('Failed to update capital:', error);
+            alert('更新资金失败');
+        }
+    }
+
+    async resetModel() {
+        if (!this.settingsModelId) return;
+
+        if (!confirm('确定要重置模拟盘吗？\n\n这将清空所有持仓、交易记录、对话记录和账户历史！\n此操作不可恢复！')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/models/${this.settingsModelId}/reset`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                alert('模拟盘重置成功！');
+                this.hideSettingsModal();
+                await this.refresh();
+            } else {
+                const error = await response.json();
+                alert(`重置失败: ${error.error || '未知错误'}`);
+            }
+        } catch (error) {
+            console.error('Failed to reset model:', error);
+            alert('重置模拟盘失败');
+        }
+    }
+
+    getModelById(modelId) {
+        return this.models?.find(m => m.id === modelId);
     }
 
     clearForm() {

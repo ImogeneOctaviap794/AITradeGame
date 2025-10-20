@@ -71,6 +71,44 @@ def delete_model(model_id):
         print(f"[ERROR] Delete model {model_id} failed: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/models/<int:model_id>/reset', methods=['POST'])
+def reset_model(model_id):
+    try:
+        model = db.get_model(model_id)
+        if not model:
+            return jsonify({'error': 'Model not found'}), 404
+        
+        model_name = model['name']
+        db.reset_model(model_id)
+        
+        print(f"[INFO] Model {model_id} ({model_name}) reset")
+        return jsonify({'message': 'Model reset successfully'})
+    except Exception as e:
+        print(f"[ERROR] Reset model {model_id} failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/models/<int:model_id>/capital', methods=['PUT'])
+def update_capital(model_id):
+    try:
+        model = db.get_model(model_id)
+        if not model:
+            return jsonify({'error': 'Model not found'}), 404
+        
+        data = request.json
+        new_capital = float(data.get('initial_capital', 0))
+        
+        if new_capital <= 0:
+            return jsonify({'error': 'Initial capital must be positive'}), 400
+        
+        db.update_initial_capital(model_id, new_capital)
+        
+        model_name = model['name']
+        print(f"[INFO] Model {model_id} ({model_name}) capital updated to ${new_capital:.2f}")
+        return jsonify({'message': 'Capital updated successfully', 'initial_capital': new_capital})
+    except Exception as e:
+        print(f"[ERROR] Update capital for model {model_id} failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/models/<int:model_id>/portfolio', methods=['GET'])
 def get_portfolio(model_id):
     prices_data = market_fetcher.get_current_prices(['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE'])
@@ -129,15 +167,34 @@ def execute_trading(model_id):
 def trading_loop():
     print("[INFO] Trading loop started")
     
+    # 启动后立即执行一次（如果有模型）
+    first_run = True
+    
     while auto_trading:
         try:
             if not trading_engines:
+                if first_run:
+                    print("[INFO] Waiting for models to be added...")
+                    first_run = False
+                print(f"[DEBUG] No trading engines, sleeping 30s... (time: {datetime.now().strftime('%H:%M:%S')})")
                 time.sleep(30)
                 continue
+            
+            # 如果不是第一次运行，先等待3分钟
+            if not first_run:
+                print(f"\n{'='*60}")
+                print(f"[SLEEP] Waiting 3 minutes for next cycle")
+                print(f"{'='*60}\n")
+                time.sleep(180)
+            else:
+                print(f"[DEBUG] First run, executing immediately...")
+            
+            first_run = False
             
             print(f"\n{'='*60}")
             print(f"[CYCLE] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"[INFO] Active models: {len(trading_engines)}")
+            print(f"[DEBUG] Trading engines IDs: {list(trading_engines.keys())}")
             print(f"{'='*60}")
             
             for model_id, engine in list(trading_engines.items()):
@@ -163,12 +220,6 @@ def trading_loop():
                     import traceback
                     print(traceback.format_exc())
                     continue
-            
-            print(f"\n{'='*60}")
-            print(f"[SLEEP] Waiting 3 minutes for next cycle")
-            print(f"{'='*60}\n")
-            
-            time.sleep(180)
             
         except Exception as e:
             print(f"\n[CRITICAL] Trading loop error: {e}")
@@ -237,23 +288,45 @@ def init_trading_engines():
     except Exception as e:
         print(f"[ERROR] Init engines failed: {e}\n")
 
-if __name__ == '__main__':
-    db.init_db()
+# 初始化标志，避免重复初始化
+_initialized = False
+
+def initialize_app():
+    """Initialize database and trading engines"""
+    global _initialized
+    if _initialized:
+        print("[DEBUG] Already initialized, skipping...")
+        return
+    _initialized = True
     
     print("\n" + "=" * 60)
-    print("AI Trading Platform")
+    print("AI Trading Platform - Initializing...")
     print("=" * 60)
     
+    db.init_db()
+    print("[OK] Database initialized")
+    
     init_trading_engines()
+    print(f"[OK] Trading engines ready: {len(trading_engines)} model(s)")
     
     if auto_trading:
         trading_thread = threading.Thread(target=trading_loop, daemon=True)
         trading_thread.start()
-        print("[INFO] Auto-trading enabled")
+        print("[INFO] Auto-trading enabled (background thread started)")
+    else:
+        print("[INFO] Auto-trading disabled")
     
     print("\n" + "=" * 60)
     print("Server: http://localhost:5000")
     print("Press Ctrl+C to stop")
     print("=" * 60 + "\n")
-    
+
+# 使用 before_request 确保初始化（适配 flask run）
+@app.before_request
+def ensure_initialized():
+    initialize_app()
+
+if __name__ == '__main__':
+    # 如果用 python app.py 启动，立即初始化
+    initialize_app()
     app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)

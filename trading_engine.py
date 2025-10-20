@@ -18,20 +18,32 @@ class TradingEngine:
             
             portfolio = self.db.get_portfolio(self.model_id, current_prices)
             
+            # 首先检查现有持仓的止损止盈条件
+            exit_results = self._check_exit_conditions(portfolio, current_prices)
+            
             account_info = self._build_account_info(portfolio)
             
             decisions = self.ai_trader.make_decision(
                 market_state, portfolio, account_info
             )
             
+            execution_results = self._execute_decisions(decisions, market_state, portfolio)
+            
+            # 合并退出和执行结果
+            all_results = exit_results + execution_results
+            
+            # 第二个请求：获取中文市场分析总结（传入完整账户信息）
+            updated_portfolio_for_summary = self.db.get_portfolio(self.model_id, current_prices)
+            analysis_summary = self.ai_trader.get_analysis_summary(
+                market_state, decisions, updated_portfolio_for_summary, account_info
+            )
+            
             self.db.add_conversation(
                 self.model_id,
                 user_prompt=self._format_prompt(market_state, portfolio, account_info),
                 ai_response=json.dumps(decisions, ensure_ascii=False),
-                cot_trace=''
+                cot_trace=analysis_summary
             )
-            
-            execution_results = self._execute_decisions(decisions, market_state, portfolio)
             
             updated_portfolio = self.db.get_portfolio(self.model_id, current_prices)
             self.db.record_account_value(
@@ -44,7 +56,7 @@ class TradingEngine:
             return {
                 'success': True,
                 'decisions': decisions,
-                'executions': execution_results,
+                'executions': all_results,
                 'portfolio': updated_portfolio
             }
             
@@ -57,16 +69,90 @@ class TradingEngine:
                 'error': str(e)
             }
     
+    def _check_exit_conditions(self, portfolio: Dict, current_prices: Dict) -> list:
+        """
+        检查所有持仓的止损止盈条件
+        自动平仓触及以下条件的仓位：
+        1. profit_target - 达到目标价
+        2. stop_loss - 触及止损价
+        3. invalidation_condition - 失效条件（简单版本：检查价格）
+        """
+        results = []
+        
+        for position in portfolio.get('positions', []):
+            coin = position['coin']
+            current_price = current_prices.get(coin, 0)
+            
+            if current_price == 0:
+                continue
+            
+            profit_target = position.get('profit_target', 0)
+            stop_loss = position.get('stop_loss', 0)
+            side = position['side']
+            should_close = False
+            reason = ""
+            
+            # 检查止盈
+            if profit_target > 0:
+                if side == 'long' and current_price >= profit_target:
+                    should_close = True
+                    reason = f"Profit target hit: ${current_price:.2f} >= ${profit_target:.2f}"
+                elif side == 'short' and current_price <= profit_target:
+                    should_close = True
+                    reason = f"Profit target hit: ${current_price:.2f} <= ${profit_target:.2f}"
+            
+            # 检查止损
+            if not should_close and stop_loss > 0:
+                if side == 'long' and current_price <= stop_loss:
+                    should_close = True
+                    reason = f"Stop loss hit: ${current_price:.2f} <= ${stop_loss:.2f}"
+                elif side == 'short' and current_price >= stop_loss:
+                    should_close = True
+                    reason = f"Stop loss hit: ${current_price:.2f} >= ${stop_loss:.2f}"
+            
+            # 如果需要平仓，执行
+            if should_close:
+                try:
+                    # 计算盈亏
+                    entry_price = position['avg_price']
+                    quantity = position['quantity']
+                    
+                    if side == 'long':
+                        pnl = (current_price - entry_price) * quantity
+                    else:
+                        pnl = (entry_price - current_price) * quantity
+                    
+                    # 平仓
+                    self.db.close_position(self.model_id, coin, side)
+                    
+                    # 记录交易
+                    self.db.add_trade(
+                        self.model_id, coin, 'auto_close', quantity,
+                        current_price, position['leverage'], side, pnl=pnl
+                    )
+                    
+                    print(f"[AUTO-EXIT] {coin} {side}: {reason}, P&L: ${pnl:.2f}")
+                    
+                    results.append({
+                        'coin': coin,
+                        'signal': 'auto_close',
+                        'reason': reason,
+                        'quantity': quantity,
+                        'price': current_price,
+                        'pnl': pnl,
+                        'message': f'Auto-closed {coin} {side}: {reason}'
+                    })
+                    
+                except Exception as e:
+                    print(f"[ERROR] Auto-exit failed for {coin}: {e}")
+                    results.append({'coin': coin, 'error': str(e)})
+        
+        return results
+    
     def _get_market_state(self) -> Dict:
-        market_state = {}
-        prices = self.market_fetcher.get_current_prices(self.coins)
-        
-        for coin in self.coins:
-            if coin in prices:
-                market_state[coin] = prices[coin].copy()
-                indicators = self.market_fetcher.calculate_technical_indicators(coin)
-                market_state[coin]['indicators'] = indicators
-        
+        """Get comprehensive market state with all technical indicators"""
+        # Use the new complete market data method
+        market_state = self.market_fetcher.get_complete_market_data(self.coins)
         return market_state
     
     def _build_account_info(self, portfolio: Dict) -> Dict:
@@ -119,6 +205,9 @@ class TradingEngine:
         quantity = float(decision.get('quantity', 0))
         leverage = int(decision.get('leverage', 1))
         price = market_state[coin]['price']
+        profit_target = float(decision.get('profit_target', 0))
+        stop_loss = float(decision.get('stop_loss', 0))
+        invalidation_condition = decision.get('invalidation_condition', '')
         
         if quantity <= 0:
             return {'coin': coin, 'error': 'Invalid quantity'}
@@ -127,8 +216,10 @@ class TradingEngine:
         if required_margin > portfolio['cash']:
             return {'coin': coin, 'error': 'Insufficient cash'}
         
+        # 保存持仓，包括止损止盈信息
         self.db.update_position(
-            self.model_id, coin, quantity, price, leverage, 'long'
+            self.model_id, coin, quantity, price, leverage, 'long',
+            profit_target, stop_loss, invalidation_condition
         )
         
         self.db.add_trade(
@@ -142,7 +233,9 @@ class TradingEngine:
             'quantity': quantity,
             'price': price,
             'leverage': leverage,
-            'message': f'Long {quantity:.4f} {coin} @ ${price:.2f}'
+            'profit_target': profit_target,
+            'stop_loss': stop_loss,
+            'message': f'Long {quantity:.4f} {coin} @ ${price:.2f} (TP: ${profit_target:.2f}, SL: ${stop_loss:.2f})'
         }
     
     def _execute_sell(self, coin: str, decision: Dict, market_state: Dict, 
@@ -150,6 +243,9 @@ class TradingEngine:
         quantity = float(decision.get('quantity', 0))
         leverage = int(decision.get('leverage', 1))
         price = market_state[coin]['price']
+        profit_target = float(decision.get('profit_target', 0))
+        stop_loss = float(decision.get('stop_loss', 0))
+        invalidation_condition = decision.get('invalidation_condition', '')
         
         if quantity <= 0:
             return {'coin': coin, 'error': 'Invalid quantity'}
@@ -158,8 +254,10 @@ class TradingEngine:
         if required_margin > portfolio['cash']:
             return {'coin': coin, 'error': 'Insufficient cash'}
         
+        # 保存持仓，包括止损止盈信息
         self.db.update_position(
-            self.model_id, coin, quantity, price, leverage, 'short'
+            self.model_id, coin, quantity, price, leverage, 'short',
+            profit_target, stop_loss, invalidation_condition
         )
         
         self.db.add_trade(
@@ -173,7 +271,9 @@ class TradingEngine:
             'quantity': quantity,
             'price': price,
             'leverage': leverage,
-            'message': f'Short {quantity:.4f} {coin} @ ${price:.2f}'
+            'profit_target': profit_target,
+            'stop_loss': stop_loss,
+            'message': f'Short {quantity:.4f} {coin} @ ${price:.2f} (TP: ${profit_target:.2f}, SL: ${stop_loss:.2f})'
         }
     
     def _execute_close(self, coin: str, decision: Dict, market_state: Dict, 
