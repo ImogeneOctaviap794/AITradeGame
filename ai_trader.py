@@ -222,15 +222,40 @@ FIELD REQUIREMENTS:
 - risk_usd: Dollar amount at risk for this trade (quantity * price_distance_to_stop_loss)
 - justification: Brief 1-sentence reason for the trade
 
-CRITICAL RULES:
-1. Output ONLY the JSON object. Do not include any text before or after the JSON.
-2. Do not use markdown code blocks. Just raw JSON starting with {{ and ending with }}.
-3. You MUST analyze ALL coins and make decisions. Do NOT return an empty object {{}}.
-4. If you decide not to trade a coin, you still need to explain why in the JSON (you can use "hold" with quantity 0).
-5. For an empty portfolio like yours, you should be looking to enter 4-6 positions based on the strategy.
+CRITICAL RULES - READ CAREFULLY:
+1. You MUST analyze the market and output trading decisions for coins where you see opportunities.
+2. Do NOT return an empty object {{}}.
+3. If you see no opportunities, you must still output "hold" signals for existing positions OR skip that coin.
+4. Output ONLY the JSON object. No explanations before or after.
+5. Do not use markdown code blocks. Just raw JSON starting with {{ and ending with }}.
 
-IMPORTANT: With $1000 cash and no positions, you should be actively seeking trading opportunities.
-Look at each coin's RSI, MACD, and trend. Enter positions where setups are clear.
+EXAMPLE OUTPUT (adapt to current market conditions):
+{{
+  "BTC": {{
+    "signal": "buy_to_enter",
+    "quantity": 0.01,
+    "leverage": 10,
+    "profit_target": 115000,
+    "stop_loss": 109000,
+    "invalidation_condition": "Price closes below 108000",
+    "confidence": 0.75,
+    "risk_usd": 50,
+    "justification": "RSI oversold at 35, MACD turning positive"
+  }},
+  "ETH": {{
+    "signal": "buy_to_enter",
+    "quantity": 0.5,
+    "leverage": 10,
+    "profit_target": 4200,
+    "stop_loss": 3900,
+    "invalidation_condition": "Price closes below 3850",
+    "confidence": 0.7,
+    "risk_usd": 50,
+    "justification": "Strong momentum, RSI 38, price above EMA20"
+  }}
+}}
+
+NOW output YOUR trading decisions in JSON format based on the market data above.
 
 ═══════════════════════════════════════════════════════════════
 BEGIN ANALYSIS
@@ -351,7 +376,7 @@ BEGIN ANALYSIS
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a professional cryptocurrency trader. Output JSON format only."
+                        "content": "You are a professional cryptocurrency trader. Analyze the market data and output your trading decisions in JSON format. You MUST provide trading decisions, not just analysis."
                     },
                     {
                         "role": "user",
@@ -359,7 +384,7 @@ BEGIN ANALYSIS
                     }
                 ],
                 temperature=0.7,
-                max_tokens=2000
+                max_tokens=8000  # 拉满到8000，给足够空间输出决策
             )
             
             message = response.choices[0].message
@@ -400,8 +425,18 @@ BEGIN ANALYSIS
         
         try:
             decisions = json.loads(response.strip())
+            
+            # 检查是否为空JSON
+            if not decisions or decisions == {}:
+                print(f"[ERROR] AI returned empty JSON {{}}. No trading decisions made!")
+                print(f"[WARN] This usually means the AI analyzed but didn't output decisions.")
+                print(f"[DATA] Full response length: {len(response)} chars")
+                print(f"[DATA] Response preview: {response[:200]}")
+            else:
+                print(f"[INFO] Successfully parsed {len(decisions)} coin decision(s)")
+            
             return decisions
         except json.JSONDecodeError as e:
             print(f"[ERROR] JSON parse failed: {e}")
-            print(f"[DATA] Response:\n{response}")
+            print(f"[DATA] Response:\n{response[:500]}")
             return {}
