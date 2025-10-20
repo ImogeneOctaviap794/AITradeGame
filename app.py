@@ -295,7 +295,6 @@ def initialize_app():
     """Initialize database and trading engines"""
     global _initialized
     if _initialized:
-        print("[DEBUG] Already initialized, skipping...")
         return
     _initialized = True
     

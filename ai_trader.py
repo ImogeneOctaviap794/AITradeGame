@@ -357,6 +357,8 @@ BEGIN ANALYSIS
         return prompt
     
     def _call_llm(self, prompt: str) -> Dict:
+        import time
+        
         try:
             base_url = self.api_url.rstrip('/')
             if not base_url.endswith('/v1'):
@@ -368,8 +370,11 @@ BEGIN ANALYSIS
             client = OpenAI(
                 api_key=self.api_key,
                 base_url=base_url,
-                timeout=300.0  # 增加超时时间到300秒（5分钟，deepseek-reasoner需要更长时间）
+                timeout=300.0  # 超时设置300秒
             )
+            
+            print(f"[AI] Calling {self.model_name}...")
+            start_time = time.time()
             
             response = client.chat.completions.create(
                 model=self.model_name,
@@ -384,8 +389,11 @@ BEGIN ANALYSIS
                     }
                 ],
                 temperature=0.7,
-                max_tokens=8000  # 拉满到8000，给足够空间输出决策
+                max_tokens=8000
             )
+            
+            elapsed = time.time() - start_time
+            print(f"[AI] Response received in {elapsed:.1f}s")
             
             message = response.choices[0].message
             content = message.content
@@ -394,6 +402,7 @@ BEGIN ANALYSIS
             reasoning = ""
             if hasattr(message, 'reasoning_content') and message.reasoning_content:
                 reasoning = message.reasoning_content
+                print(f"[AI] Reasoning length: {len(reasoning)} chars")
             
             return {
                 'content': content,
