@@ -367,6 +367,7 @@ BEGIN ANALYSIS
     
     def _call_llm(self, prompt: str) -> Dict:
         import time
+        import httpx
         
         try:
             base_url = self.api_url.rstrip('/')
@@ -376,10 +377,20 @@ BEGIN ANALYSIS
                 else:
                     base_url = base_url + '/v1'
             
+            # 创建自定义的httpx客户端，设置更长的读取超时
+            http_client = httpx.Client(
+                timeout=httpx.Timeout(
+                    connect=60.0,   # 连接超时60秒
+                    read=300.0,     # 读取超时300秒（关键！）
+                    write=60.0,     # 写入超时60秒
+                    pool=60.0       # 连接池超时60秒
+                )
+            )
+            
             client = OpenAI(
                 api_key=self.api_key,
                 base_url=base_url,
-                timeout=300.0  # 超时设置300秒
+                http_client=http_client  # 使用自定义的http客户端
             )
             
             print(f"[AI] Calling {self.model_name}...")
