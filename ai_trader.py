@@ -10,18 +10,27 @@ class AITrader:
     
     def make_decision(self, market_state: Dict, portfolio: Dict, 
                      account_info: Dict) -> Dict:
-        prompt = self._build_prompt(market_state, portfolio, account_info)
-        
-        response_data = self._call_llm(prompt)
-        
-        decisions = self._parse_response(response_data['content'])
-        
-        # 返回决策和思考过程
-        return {
-            'decisions': decisions,
-            'reasoning': response_data.get('reasoning', ''),
-            'prompt': prompt  # 也返回完整提示词
-        }
+        try:
+            print(f"[AI] Building prompt...")
+            prompt = self._build_prompt(market_state, portfolio, account_info)
+            
+            print(f"[AI] Prompt length: {len(prompt)} chars")
+            response_data = self._call_llm(prompt)
+            
+            print(f"[AI] Parsing response...")
+            decisions = self._parse_response(response_data['content'])
+            
+            # 返回决策和思考过程
+            return {
+                'decisions': decisions,
+                'reasoning': response_data.get('reasoning', ''),
+                'prompt': prompt  # 也返回完整提示词
+            }
+        except Exception as e:
+            print(f"[ERROR] make_decision failed: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def get_analysis_summary(self, market_state: Dict, decisions: Dict,
                            portfolio: Dict, account_info: Dict) -> str:
@@ -395,19 +404,27 @@ BEGIN ANALYSIS
             elapsed = time.time() - start_time
             print(f"[AI] Response received in {elapsed:.1f}s")
             
-            message = response.choices[0].message
-            content = message.content
-            
-            # 检测DeepSeek的reasoning字段
-            reasoning = ""
-            if hasattr(message, 'reasoning_content') and message.reasoning_content:
-                reasoning = message.reasoning_content
-                print(f"[AI] Reasoning length: {len(reasoning)} chars")
-            
-            return {
-                'content': content,
-                'reasoning': reasoning
-            }
+            try:
+                message = response.choices[0].message
+                content = message.content if message.content else ""
+                
+                print(f"[AI] Content length: {len(content)} chars")
+                
+                # 检测DeepSeek的reasoning字段
+                reasoning = ""
+                if hasattr(message, 'reasoning_content') and message.reasoning_content:
+                    reasoning = message.reasoning_content
+                    print(f"[AI] Reasoning length: {len(reasoning)} chars")
+                
+                return {
+                    'content': content,
+                    'reasoning': reasoning
+                }
+            except Exception as e:
+                print(f"[ERROR] Failed to parse API response: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
             
         except APIConnectionError as e:
             error_msg = f"API connection failed: {str(e)}"
