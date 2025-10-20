@@ -326,7 +326,7 @@ BEGIN ANALYSIS
             client = OpenAI(
                 api_key=self.api_key,
                 base_url=base_url,
-                timeout=60.0  # 增加超时时间到60秒
+                timeout=300.0  # 增加超时时间到300秒（5分钟，deepseek-reasoner需要更长时间）
             )
             
             response = client.chat.completions.create(

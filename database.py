@@ -211,7 +211,21 @@ class Database:
         
         # Get initial capital
         cursor.execute('SELECT initial_capital FROM models WHERE id = ?', (model_id,))
-        initial_capital = cursor.fetchone()['initial_capital']
+        model_row = cursor.fetchone()
+        if not model_row:
+            conn.close()
+            # Model doesn't exist, return empty portfolio
+            return {
+                'model_id': model_id,
+                'cash': 0,
+                'positions': [],
+                'positions_value': 0,
+                'margin_used': 0,
+                'total_value': 0,
+                'realized_pnl': 0,
+                'unrealized_pnl': 0
+            }
+        initial_capital = model_row['initial_capital']
         
         # Calculate realized P&L (sum of all trade P&L)
         cursor.execute('''
