@@ -222,8 +222,15 @@ FIELD REQUIREMENTS:
 - risk_usd: Dollar amount at risk for this trade (quantity * price_distance_to_stop_loss)
 - justification: Brief 1-sentence reason for the trade
 
-CRITICAL: Output ONLY the JSON object. Do not include any text before or after the JSON.
-Do not use markdown code blocks. Just raw JSON starting with {{ and ending with }}.
+CRITICAL RULES:
+1. Output ONLY the JSON object. Do not include any text before or after the JSON.
+2. Do not use markdown code blocks. Just raw JSON starting with {{ and ending with }}.
+3. You MUST analyze ALL coins and make decisions. Do NOT return an empty object {{}}.
+4. If you decide not to trade a coin, you still need to explain why in the JSON (you can use "hold" with quantity 0).
+5. For an empty portfolio like yours, you should be looking to enter 4-6 positions based on the strategy.
+
+IMPORTANT: With $1000 cash and no positions, you should be actively seeking trading opportunities.
+Look at each coin's RSI, MACD, and trend. Enter positions where setups are clear.
 
 ═══════════════════════════════════════════════════════════════
 BEGIN ANALYSIS
